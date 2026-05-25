@@ -259,6 +259,7 @@ class Board:
 
 class BoardRenderer:
     TILE_SIZE = 300
+    ANCHOR_RADIUS = 50
 
     def render(self, board: Board, debug=False):
         tiles = board.tiles
@@ -289,7 +290,12 @@ class BoardRenderer:
                 draw = ImageDraw.Draw(img)
                 draw.rectangle((0, 0, self.TILE_SIZE - 1, self.TILE_SIZE - 1), fill=None, outline="black", width=3)
                 draw.text((20, 20), text=str(f"id: {tile.template.id}\nrot: {tile.rotation}"), fill="black")
-
+                for area in tile.areas:
+                    area_origin_px = area.anchor_origin[0] * self.TILE_SIZE
+                    area_origin_py = area.anchor_origin[1] * self.TILE_SIZE
+                    draw.circle((area_origin_px, area_origin_py), 5, "black")
+                    draw.circle((area_origin_px, area_origin_py), self.ANCHOR_RADIUS)
+                    draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.position), fill="black")
             canvas.paste(img, (px, py))
 
         return canvas
