@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import random
 from enum import Enum
+from PIL import Image, ImageDraw
+from collections import deque
 
 
 class Asset: pass
@@ -54,6 +56,11 @@ class UnitTemplate:
     materiel_cost: int
     requires_forge: bool
 
+@dataclass
+class UnitState:
+    unrouted: int = 0
+    routed: int = 0
+
 class GameState:
     def __init__(self, players):
         self.players = players
@@ -71,7 +78,6 @@ class SetupConfig:
 
     def add_player(self, player_name: str, faction: Faction):
         self.players.append(PlayerSetup(player_name, faction))
-
 
 def setup_game(config: SetupConfig) -> GameState:
     player_setups = config.players.copy()
@@ -157,13 +163,16 @@ class AreaTemplate:
     reinforcement: int = 0
     prosperity: int = 0
 
+
 class Area:
     def __init__(self, template: AreaTemplate):
         self.template = template
 
-        self.units = {}
+        self.units: dict[UnitTemplate, UnitState] = {}
         self.structures = {}
         self.objective_token = None
+        self.position = None
+        self.anchor_origin = None
 
     @property
     def capacity(self):
@@ -173,22 +182,119 @@ class Area:
     def area_type(self):
         return self.template.area_type
 
+    def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
+        state = self.units.get(unit)
+
+        if state is None:
+            state = UnitState()
+            self.units[unit] = state
+
+        state.unrouted += amount_unrouted
+        state.routed += amount_routed
+
+    def remove_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
+        state = self.units.get(unit)
+        if state is None:
+            return
+
+        state.unrouted -= min(state.unrouted, amount_unrouted)
+
+        state.routed -= min(state.routed, amount_routed)
+
+        if state.unrouted == 0 and state.routed == 0:
+            del self.units[unit]
+
+    def is_empty(self) -> bool:
+        return len(self.units) == 0
+
 @dataclass(frozen=True)
 class TileTemplate:
     id: str
     image_path: str
-    areas: list[AreaTemplate]
+    area_templates: list[AreaTemplate]
     is_faction_tile: bool
 
 class Tile:
+    ANCHOR_ORIGINS = {0: (0.25, 0.25), 1: (0.75, 0.25), 2: (0.75, 0.75), 3: (0.25, 0.75)}
+
     def __init__(self, template: TileTemplate, rotation: int = 0):
         self.template = template
         self.rotation = rotation
 
-        self.areas = [Area(t) for t in self.template.areas]
+        self.areas = deque([Area(area_template) for area_template in self.template.area_templates])
+        ccw_turns = self.rotation // 90
+        self.areas.rotate(-ccw_turns)
 
-        for area in self.areas:
+        for i, area in enumerate(self.areas):
             area.tile = self
+            area.position = i
+            area.anchor_origin = self.ANCHOR_ORIGINS[area.position]
+
+        self.board = None
+        self.position = None
+
+class Board:
+    def __init__(self, player_count: int):
+        if player_count == 2:
+            self.dimensions = (2, 3)
+        elif player_count == 3:
+            self.dimensions = (3, 3)
+        elif player_count == 4:
+            self.dimensions = (3, 4)
+
+        self.tiles: dict[tuple[int, int], Tile] = {}
+
+    def add_tile(self, tile: Tile, position: tuple[int, int]):
+
+        if position in self.tiles:
+            raise ValueError("Tile already exists at this position")
+
+        self.tiles[position] = tile
+
+        tile.board = self
+        tile.position = position
+
+    def get_tile(self, position: tuple[int, int]) -> Tile | None:
+        return self.tiles.get(position)
+
+class BoardRenderer:
+    TILE_SIZE = 300
+
+    def render(self, board: Board, debug=False):
+        tiles = board.tiles
+
+        # board dimensions
+        min_x = min(x for (x, y) in tiles.keys())
+        max_x = max(x for (x, y) in tiles.keys())
+        min_y = min(y for (x, y) in tiles.keys())
+        max_y = max(y for (x, y) in tiles.keys())
+        x_dimension = max_x - min_x + 1
+        y_dimension = max_y - min_y + 1
+
+        pixel_width = x_dimension * self.TILE_SIZE
+        pixel_height = y_dimension * self.TILE_SIZE
+
+        canvas = Image.new("RGBA", (pixel_width, pixel_height))
+
+        for (x, y), tile in tiles.items():
+            img = Image.open(tile.template.image_path)
+
+            if tile.rotation:
+                img = img.rotate(tile.rotation)
+
+            px = (x - min_x) * self.TILE_SIZE
+            py = (y - min_y) * self.TILE_SIZE
+
+            if debug:
+                draw = ImageDraw.Draw(img)
+                draw.rectangle((0, 0, self.TILE_SIZE - 1, self.TILE_SIZE - 1), fill=None, outline="black", width=3)
+                draw.text((20, 20), text=str(f"id: {tile.template.id}\nrot: {tile.rotation}"), fill="black")
+
+            canvas.paste(img, (px, py))
+
+        return canvas
+
+
 
 
 
