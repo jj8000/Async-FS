@@ -4,6 +4,8 @@ import random
 from enum import Enum
 from PIL import Image, ImageDraw
 from collections import deque
+from math import pi, sin, cos
+from geometry import rotate_vector
 
 
 class Asset: pass
@@ -27,6 +29,7 @@ class Player:
 @dataclass
 class Faction:
     name: str
+    id: str
     ability: str
     starting_units: dict[UnitTemplate, int]
     total_units: dict[UnitTemplate, int]
@@ -48,6 +51,7 @@ class UnitTemplate:
     long_name: str
     unit_type: str
     command_level: int
+    faction_id: str
 
     combat_value: int
     health: int
@@ -55,6 +59,16 @@ class UnitTemplate:
 
     materiel_cost: int
     requires_forge: bool
+
+@dataclass(frozen=True)
+class StructureTemplate:
+    name: str
+
+    combat_value: int
+    health: int
+    morale: int
+
+    materiel_cost: int
 
 @dataclass
 class UnitState:
@@ -162,7 +176,8 @@ class AreaTemplate:
     cache: int = 0
     reinforcement: int = 0
     prosperity: int = 0
-
+    origin_offset: tuple[float, float] = (0, 0)
+    anchor_radius: float | None = None
 
 class Area:
     def __init__(self, template: AreaTemplate):
@@ -171,8 +186,9 @@ class Area:
         self.units: dict[UnitTemplate, UnitState] = {}
         self.structures = {}
         self.objective_token = None
-        self.position = None
-        self.anchor_origin = None
+        self.tile_position = None
+        self.local_origin = None
+        self.global_origin = None
 
     @property
     def capacity(self):
@@ -204,8 +220,28 @@ class Area:
         if state.unrouted == 0 and state.routed == 0:
             del self.units[unit]
 
-    def is_empty(self) -> bool:
-        return len(self.units) == 0
+    def is_uncontrolled(self) -> bool:
+        return len(self.units) == 0 and len(self.structures) == 0
+
+    def is_contested(self) -> bool:
+        return len(set(template.faction_id for template in self.units.keys())) > 1
+
+    def is_friendly(self, player: Player) -> bool:
+        pass
+
+    def calculate_anchors(self, radius):
+        if self.is_uncontrolled():
+            return
+
+        if not self.is_contested():
+            n = len(self.units) # number of unit anchors
+            phi = 360 / n
+            anchor_offsets = [rotate_vector((0, -radius), i * phi) for i in range(n)]
+            return anchor_offsets
+
+        elif self.is_contested():
+            n_defender = len(self.units) # number of unit anchors
+
 
 @dataclass(frozen=True)
 class TileTemplate:
@@ -215,7 +251,7 @@ class TileTemplate:
     is_faction_tile: bool
 
 class Tile:
-    ANCHOR_ORIGINS = {0: (0.25, 0.25), 1: (0.75, 0.25), 2: (0.75, 0.75), 3: (0.25, 0.75)}
+    DEFAULT_LOCAL_ORIGINS = ((0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75))
 
     def __init__(self, template: TileTemplate, rotation: int = 0):
         self.template = template
@@ -227,13 +263,34 @@ class Tile:
 
         for i, area in enumerate(self.areas):
             area.tile = self
-            area.position = i
-            area.anchor_origin = self.ANCHOR_ORIGINS[area.position]
+            area.tile_position = i
+            x0, y0 = self.DEFAULT_LOCAL_ORIGINS[i]
+            dx, dy = self._rotate_offset(area.template.origin_offset, self.rotation)
+            area.local_origin = (x0 + dx, y0 + dy)
 
         self.board = None
+        self.setup_position = None
         self.position = None
+        self.label = None
+
+    @staticmethod
+    def _rotate_offset(offset: tuple[float, float], rotation: int) -> tuple[float, float]:
+        dx, dy = offset
+
+        if rotation == 0:
+            return dx, dy
+        elif rotation == 90:
+            return dy, -dx
+        elif rotation == 180:
+            return -dx, -dy
+        elif rotation == 270:
+            return -dy, dx
+        raise ValueError(f"Invalid rotation angle: {rotation} degrees")
 
 class Board:
+    COLUMN_LABELS = ('A', 'B', 'C', 'D')
+    ROW_LABELS = ('1', '2', '3', '4')
+
     def __init__(self, player_count: int):
         if player_count == 2:
             self.dimensions = (2, 3)
@@ -243,23 +300,35 @@ class Board:
             self.dimensions = (3, 4)
 
         self.tiles: dict[tuple[int, int], Tile] = {}
+        self._setup_complete = False
 
-    def add_tile(self, tile: Tile, position: tuple[int, int]):
+    def add_tile(self, tile: Tile, setup_coords: tuple[int, int]):
 
-        if position in self.tiles:
+        if setup_coords in self.tiles:
             raise ValueError("Tile already exists at this position")
 
-        self.tiles[position] = tile
+        self.tiles[setup_coords] = tile
 
         tile.board = self
-        tile.position = position
+        tile.setup_position = setup_coords
 
     def get_tile(self, position: tuple[int, int]) -> Tile | None:
         return self.tiles.get(position)
 
+    def _finalise_layout(self):
+        global_cs_origin = min(self.tiles.keys(), key=lambda p: p[0] + p[1]) # new global CS origin (topleft)
+        for setup_position, tile in self.tiles.items():
+            tile.position = (setup_position[0] - global_cs_origin[0], setup_position[1] - global_cs_origin[1])
+            tile.label = f"{self.COLUMN_LABELS[tile.position[0]]}{self.ROW_LABELS[tile.position[1]]}"
+            for area in tile.areas:
+                area.global_origin = (tile.position[0] + area.local_origin[0],
+                                      tile.position[1] + area.local_origin[1])
+        self._setup_complete = True
+
 class BoardRenderer:
     TILE_SIZE = 300
-    ANCHOR_RADIUS = 50
+    DEFAULT_ANCHOR_RADIUS = TILE_SIZE / 6
+    UNIT_OFFSET = 15
 
     def render(self, board: Board, debug=False):
         tiles = board.tiles
@@ -291,11 +360,26 @@ class BoardRenderer:
                 draw.rectangle((0, 0, self.TILE_SIZE - 1, self.TILE_SIZE - 1), fill=None, outline="black", width=3)
                 draw.text((20, 20), text=str(f"id: {tile.template.id}\nrot: {tile.rotation}"), fill="black")
                 for area in tile.areas:
-                    area_origin_px = area.anchor_origin[0] * self.TILE_SIZE
-                    area_origin_py = area.anchor_origin[1] * self.TILE_SIZE
+                    area_origin_px = area.local_origin[0] * self.TILE_SIZE
+                    area_origin_py = area.local_origin[1] * self.TILE_SIZE
                     draw.circle((area_origin_px, area_origin_py), 5, "black")
-                    draw.circle((area_origin_px, area_origin_py), self.ANCHOR_RADIUS)
-                    draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.position), fill="black")
+                    draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
+                    anchor_offsets = (
+                        area.calculate_anchors(radius = area.template.anchor_radius or self.DEFAULT_ANCHOR_RADIUS))
+                    if anchor_offsets:
+                        for offset, (unit_template, unit_state) in zip(anchor_offsets, area.units.items()):
+                            unrouted = unit_state.unrouted
+                            routed = unit_state.routed
+                            anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+                            current_position = anchor_position
+                            for i in range(unrouted):
+                                draw.circle(current_position, 5, "white")
+                                current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                            for i in range(routed):
+                                draw.circle(current_position, 5, "black")
+                                current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                    draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.tile_position), fill="black")
+
             canvas.paste(img, (px, py))
 
         return canvas
