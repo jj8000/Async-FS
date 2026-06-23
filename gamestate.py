@@ -80,6 +80,7 @@ class GameState:
         self.players = players
         self.current_round = 0
         self.first_player_index = 0
+        self.current_player_index = 0
 
 @dataclass
 class PlayerSetup:
