@@ -241,7 +241,10 @@ class Area:
             return anchor_offsets
 
         elif self.is_contested():
-            n_defender = len(self.units) # number of unit anchors
+			n_defender = len(self.defender_units)
+            n_attacker = len(self.attacker_units) 
+            phi_def = 180 / (n_defender + 1)
+            anchor_offsets_def = [rotate_vector((0, -radius), i * phi_def) for i in range(1, n_defender + 1))]
 
 
 @dataclass(frozen=True)
