@@ -80,6 +80,10 @@ class GameState:
         self.players = players
         self.current_round = 0
         self.first_player_index = 0
+        self.active_player_index = 0
+
+    def next_player(self):
+        self.active_player_index = (self.active_player_index + 1) % len(self.players)
 
 @dataclass
 class PlayerSetup:
@@ -199,6 +203,7 @@ class Area:
         return self.template.area_type
 
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
+
         state = self.units.get(unit)
 
         if state is None:
@@ -229,6 +234,9 @@ class Area:
     def is_friendly(self, player: Player) -> bool:
         pass
 
+    def controlling_faction(self):
+        
+
     def calculate_anchors(self, radius):
         if self.is_uncontrolled():
             return
@@ -240,7 +248,7 @@ class Area:
             return anchor_offsets
 
         elif self.is_contested():
-            n_defender = len(self.units) # number of unit anchors
+            defender_units = [unit for unit in self.]
 
 
 @dataclass(frozen=True)
