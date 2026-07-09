@@ -189,6 +189,7 @@ class Area:
 
         self.units: dict[UnitTemplate, UnitState] = {}
         self.structures = {}
+        self.attacker_units: dict[UnitTemplate, UnitState] = {}
         self.objective_token = None
         self.tile_position = None
         self.local_origin = None
@@ -203,11 +204,14 @@ class Area:
         return self.template.area_type
 
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
-        state = self.units.get(unit)
+        state = (self.units | self.attacker_units).get(unit)
 
         if state is None:
             state = UnitState()
-            self.units[unit] = state
+            if unit.faction_id == next(iter(self.units)).faction_id:
+				self.units[unit] = state
+			else:
+				self.attacker_units[unit] = state
 
         state.unrouted += amount_unrouted
         state.routed += amount_routed
@@ -244,10 +248,13 @@ class Area:
             return anchor_offsets
 
         elif self.is_contested():
-            n_defender = len(self.defender_units)
+            n_defender = len(self.units)
             n_attacker = len(self.attacker_units)
             phi_def = 180 / (n_defender + 1)
-            anchor_offsets_def = [rotate_vector((0, -radius), i * phi_def) for i in range(1, n_defender + 1)]
+            phi_att = - 180 / (n_attacker + 1)
+            anchor_offsets_defender = [rotate_vector((0, -radius), i * phi_def) for i in range(1, n_defender + 1)]
+            anchor_offsets_attacker = [rotate_vector((0, -radius), i * phi_att) for i in range(1, n_attacker + 1)]
+            return anchor_offsets_defender, anchor_offsets_attacker
 
 @dataclass(frozen=True)
 class TileTemplate:
@@ -335,7 +342,53 @@ class BoardRenderer:
     TILE_SIZE = 300
     DEFAULT_ANCHOR_RADIUS = TILE_SIZE / 6
     UNIT_OFFSET = 15
+	
+	def draw_units(self, area: Area, draw: ImageDraw.Draw):
+		area_origin_px = area.local_origin[0] * self.TILE_SIZE
+		area_origin_py = area.local_origin[1] * self.TILE_SIZE
+		draw.circle((area_origin_px, area_origin_py), 5, "black")
+		draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
+		anchor_offsets = (
+			area.calculate_anchors(radius = area.template.anchor_radius or self.DEFAULT_ANCHOR_RADIUS))
+		if anchor_offsets:
+			if not area.attacker_units:
+				for offset, (unit_template, unit_state) in zip(anchor_offsets, area.units.items()):
+					unrouted = unit_state.unrouted
+					routed = unit_state.routed
+					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+					current_position = anchor_position
+				for i in range(unrouted):
+					draw.circle(current_position, 5, "white")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+				for i in range(routed):
+					draw.circle(current_position, 5, "black")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+			elif area.attacker_units:
+				for offset, (unit_template, unit_state) in zip(anchor_offsets[0], area.units.items()):
+					unrouted = unit_state.unrouted
+					routed = unit_state.routed
+					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+					current_position = anchor_position
+				for i in range(unrouted):
+					draw.circle(current_position, 5, "white")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+				for i in range(routed):
+					draw.circle(current_position, 5, "black")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+				
+				for offset, (unit_template, unit_state) in zip(anchor_offsets[1], area.attacker_units.items()):
+					unrouted = unit_state.unrouted
+					routed = unit_state.routed
+					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+					current_position = anchor_position
+				for i in range(unrouted):
+					draw.circle(current_position, 5, "white")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+				for i in range(routed):
+					draw.circle(current_position, 5, "black")
+					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
 
+			
     def render(self, board: Board, debug=False):
         tiles = board.tiles
 
@@ -366,24 +419,8 @@ class BoardRenderer:
                 draw.rectangle((0, 0, self.TILE_SIZE - 1, self.TILE_SIZE - 1), fill=None, outline="black", width=3)
                 draw.text((20, 20), text=str(f"id: {tile.template.id}\nrot: {tile.rotation}"), fill="black")
                 for area in tile.areas:
-                    area_origin_px = area.local_origin[0] * self.TILE_SIZE
-                    area_origin_py = area.local_origin[1] * self.TILE_SIZE
-                    draw.circle((area_origin_px, area_origin_py), 5, "black")
-                    draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
-                    anchor_offsets = (
-                        area.calculate_anchors(radius = area.template.anchor_radius or self.DEFAULT_ANCHOR_RADIUS))
-                    if anchor_offsets:
-                        for offset, (unit_template, unit_state) in zip(anchor_offsets, area.units.items()):
-                            unrouted = unit_state.unrouted
-                            routed = unit_state.routed
-                            anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-                            current_position = anchor_position
-                            for i in range(unrouted):
-                                draw.circle(current_position, 5, "white")
-                                current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-                            for i in range(routed):
-                                draw.circle(current_position, 5, "black")
-                                current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+					draw_units(area, draw)
+
                     draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.tile_position), fill="black")
 
             canvas.paste(img, (px, py))
