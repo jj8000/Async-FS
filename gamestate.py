@@ -203,7 +203,6 @@ class Area:
         return self.template.area_type
 
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
-
         state = self.units.get(unit)
 
         if state is None:
@@ -234,9 +233,6 @@ class Area:
     def is_friendly(self, player: Player) -> bool:
         pass
 
-    def controlling_faction(self):
-        
-
     def calculate_anchors(self, radius):
         if self.is_uncontrolled():
             return
@@ -248,8 +244,10 @@ class Area:
             return anchor_offsets
 
         elif self.is_contested():
-            defender_units = [unit for unit in self.]
-
+            n_defender = len(self.defender_units)
+            n_attacker = len(self.attacker_units)
+            phi_def = 180 / (n_defender + 1)
+            anchor_offsets_def = [rotate_vector((0, -radius), i * phi_def) for i in range(1, n_defender + 1)]
 
 @dataclass(frozen=True)
 class TileTemplate:
