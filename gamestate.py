@@ -10,6 +10,7 @@ from geometry import rotate_vector
 
 class Asset: pass
 
+
 class Player:
     def __init__(self, name: str, faction: Faction, index: int):
         self.name = name
@@ -41,9 +42,11 @@ class Faction:
     event_cards: list[EventCard]
     home_tile: Tile
 
+
 class AreaType(Enum):
     VOID = "void"
     WORLD = "world"
+
 
 @dataclass(frozen=True)
 class UnitTemplate:
@@ -60,6 +63,7 @@ class UnitTemplate:
     materiel_cost: int
     requires_forge: bool
 
+
 @dataclass(frozen=True)
 class StructureTemplate:
     name: str
@@ -70,10 +74,12 @@ class StructureTemplate:
 
     materiel_cost: int
 
+
 @dataclass
 class UnitState:
     unrouted: int = 0
     routed: int = 0
+
 
 class GameState:
     def __init__(self, players):
@@ -85,10 +91,12 @@ class GameState:
     def next_player(self):
         self.active_player_index = (self.active_player_index + 1) % len(self.players)
 
+
 @dataclass
 class PlayerSetup:
     name: str
     faction: Faction
+
 
 class SetupConfig:
     def __init__(self):
@@ -96,6 +104,7 @@ class SetupConfig:
 
     def add_player(self, player_name: str, faction: Faction):
         self.players.append(PlayerSetup(player_name, faction))
+
 
 def setup_game(config: SetupConfig) -> GameState:
     player_setups = config.players.copy()
@@ -111,6 +120,7 @@ def setup_game(config: SetupConfig) -> GameState:
         players.append(player)
 
     return GameState(players)
+
 
 class EventDeck:
     def __init__(self, event_cards):
@@ -134,6 +144,7 @@ class EventDeck:
         self.cards.append(card)
         self.shuffle()
 
+
 class CombatDeck:
     def __init__(self, combat_cards):
         self.cards = list(combat_cards)
@@ -155,20 +166,24 @@ class CombatDeck:
     def upgrade(self, removed_cards, purchased_cards):
         pass
 
+
 @dataclass
 class EventCard:
     name: str
     image_path: str
+
 
 @dataclass
 class CombatCard:
     name: str
     image_path: str
 
+
 @dataclass
 class OrderUpgrade:
     name: str
     image_path: str
+
 
 @dataclass(frozen=True)
 class AreaTemplate:
@@ -182,6 +197,7 @@ class AreaTemplate:
     prosperity: int = 0
     origin_offset: tuple[float, float] = (0, 0)
     anchor_radius: float | None = None
+
 
 class Area:
     def __init__(self, template: AreaTemplate):
@@ -204,35 +220,41 @@ class Area:
         return self.template.area_type
 
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
-        state = (self.units | self.attacker_units).get(unit)
+        state = self.units.get(unit) or self.attacker_units.get(unit)
 
         if state is None:
             state = UnitState()
-            if unit.faction_id == next(iter(self.units)).faction_id:
-				self.units[unit] = state
-			else:
-				self.attacker_units[unit] = state
+            if not self.units:
+                self.units[unit] = state
+            elif unit.faction_id == next(iter(self.units)).faction_id:
+                self.units[unit] = state
+            else:
+                self.attacker_units[unit] = state
 
         state.unrouted += amount_unrouted
         state.routed += amount_routed
 
     def remove_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
-        state = self.units.get(unit)
-        if state is None:
+        if unit in self.units:
+            units_dict = self.units
+        elif unit in self.attacker_units:
+            units_dict = self.attacker_units
+        else:
             return
 
-        state.unrouted -= min(state.unrouted, amount_unrouted)
+        state = units_dict[unit]
 
+        state.unrouted -= min(state.unrouted, amount_unrouted)
         state.routed -= min(state.routed, amount_routed)
 
         if state.unrouted == 0 and state.routed == 0:
-            del self.units[unit]
+            del units_dict[unit]
 
     def is_uncontrolled(self) -> bool:
         return len(self.units) == 0 and len(self.structures) == 0
 
     def is_contested(self) -> bool:
-        return len(set(template.faction_id for template in self.units.keys())) > 1
+        return bool(self.attacker_units)
 
     def is_friendly(self, player: Player) -> bool:
         pass
@@ -256,12 +278,14 @@ class Area:
             anchor_offsets_attacker = [rotate_vector((0, -radius), i * phi_att) for i in range(1, n_attacker + 1)]
             return anchor_offsets_defender, anchor_offsets_attacker
 
+
 @dataclass(frozen=True)
 class TileTemplate:
     id: str
     image_path: str
     area_templates: list[AreaTemplate]
     is_faction_tile: bool
+
 
 class Tile:
     DEFAULT_LOCAL_ORIGINS = ((0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75))
@@ -299,6 +323,7 @@ class Tile:
         elif rotation == 270:
             return -dy, dx
         raise ValueError(f"Invalid rotation angle: {rotation} degrees")
+
 
 class Board:
     COLUMN_LABELS = ('A', 'B', 'C', 'D')
@@ -338,57 +363,57 @@ class Board:
                                       tile.position[1] + area.local_origin[1])
         self._setup_complete = True
 
+
 class BoardRenderer:
     TILE_SIZE = 300
     DEFAULT_ANCHOR_RADIUS = TILE_SIZE / 6
     UNIT_OFFSET = 15
-	
-	def draw_units(self, area: Area, draw: ImageDraw.Draw):
-		area_origin_px = area.local_origin[0] * self.TILE_SIZE
-		area_origin_py = area.local_origin[1] * self.TILE_SIZE
-		draw.circle((area_origin_px, area_origin_py), 5, "black")
-		draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
-		anchor_offsets = (
-			area.calculate_anchors(radius = area.template.anchor_radius or self.DEFAULT_ANCHOR_RADIUS))
-		if anchor_offsets:
-			if not area.attacker_units:
-				for offset, (unit_template, unit_state) in zip(anchor_offsets, area.units.items()):
-					unrouted = unit_state.unrouted
-					routed = unit_state.routed
-					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-					current_position = anchor_position
-				for i in range(unrouted):
-					draw.circle(current_position, 5, "white")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-				for i in range(routed):
-					draw.circle(current_position, 5, "black")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-			elif area.attacker_units:
-				for offset, (unit_template, unit_state) in zip(anchor_offsets[0], area.units.items()):
-					unrouted = unit_state.unrouted
-					routed = unit_state.routed
-					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-					current_position = anchor_position
-				for i in range(unrouted):
-					draw.circle(current_position, 5, "white")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-				for i in range(routed):
-					draw.circle(current_position, 5, "black")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-				
-				for offset, (unit_template, unit_state) in zip(anchor_offsets[1], area.attacker_units.items()):
-					unrouted = unit_state.unrouted
-					routed = unit_state.routed
-					anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-					current_position = anchor_position
-				for i in range(unrouted):
-					draw.circle(current_position, 5, "white")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-				for i in range(routed):
-					draw.circle(current_position, 5, "black")
-					current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
 
-			
+    def normalise(self, value):
+        return value * self.TILE_SIZE if value else None
+
+    def draw_units(self, area: Area, draw: ImageDraw.Draw):
+        anchor_offsets = (
+            area.calculate_anchors(radius = self.normalise(area.template.anchor_radius) or self.DEFAULT_ANCHOR_RADIUS))
+        area_origin_px, area_origin_py = self.normalise(area.local_origin[0]), self.normalise(area.local_origin[1])
+        if anchor_offsets:
+            if not area.is_contested():
+                for offset, (unit_template, unit_state) in zip(anchor_offsets, area.units.items()):
+                    unrouted = unit_state.unrouted
+                    routed = unit_state.routed
+                    anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+                    current_position = anchor_position
+                    for i in range(unrouted):
+                        draw.circle(current_position, 5, "white")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                    for i in range(routed):
+                        draw.circle(current_position, 5, "black")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+            elif area.is_contested():
+                for offset, (unit_template, unit_state) in zip(anchor_offsets[0], area.units.items()):
+                    unrouted = unit_state.unrouted
+                    routed = unit_state.routed
+                    anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+                    current_position = anchor_position
+                    for i in range(unrouted):
+                        draw.circle(current_position, 5, "white")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                    for i in range(routed):
+                        draw.circle(current_position, 5, "black")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+
+                for offset, (unit_template, unit_state) in zip(anchor_offsets[1], area.attacker_units.items()):
+                    unrouted = unit_state.unrouted
+                    routed = unit_state.routed
+                    anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
+                    current_position = anchor_position
+                    for i in range(unrouted):
+                        draw.circle(current_position, 5, "white")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                    for i in range(routed):
+                        draw.circle(current_position, 5, "black")
+                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+
     def render(self, board: Board, debug=False):
         tiles = board.tiles
 
@@ -419,7 +444,11 @@ class BoardRenderer:
                 draw.rectangle((0, 0, self.TILE_SIZE - 1, self.TILE_SIZE - 1), fill=None, outline="black", width=3)
                 draw.text((20, 20), text=str(f"id: {tile.template.id}\nrot: {tile.rotation}"), fill="black")
                 for area in tile.areas:
-					draw_units(area, draw)
+                    area_origin_px = self.normalise(area.local_origin[0])
+                    area_origin_py = self.normalise(area.local_origin[1])
+                    draw.circle((area_origin_px, area_origin_py), 5, "black")
+                    draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
+                    self.draw_units(area, draw)
 
                     draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.tile_position), fill="black")
 
