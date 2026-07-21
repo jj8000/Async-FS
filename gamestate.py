@@ -54,7 +54,7 @@ class UnitTemplate:
     long_name: str
     unit_type: str
     command_level: int
-    faction_id: str
+    faction: Faction
 
     combat_value: int
     health: int
@@ -64,8 +64,21 @@ class UnitTemplate:
     requires_forge: bool
 
 
+@dataclass
+class UnitState:
+    unrouted: int = 0
+    routed: int = 0
+
+
+class StructureType(Enum):
+    CITY = "city"
+    FACTORY = "factory"
+    BASTION = "bastion"
+
+
 @dataclass(frozen=True)
 class StructureTemplate:
+    type: StructureType
     name: str
 
     combat_value: int
@@ -76,9 +89,11 @@ class StructureTemplate:
 
 
 @dataclass
-class UnitState:
-    unrouted: int = 0
-    routed: int = 0
+class StructureState:
+    faction: Faction
+    cities: int
+    factories: int
+    bastions: int
 
 
 class GameState:
@@ -164,7 +179,7 @@ class CombatDeck:
         return drawn
 
     def upgrade(self, removed_cards, purchased_cards):
-        pass
+        ...
 
 
 @dataclass
@@ -204,7 +219,7 @@ class Area:
         self.template = template
 
         self.units: dict[UnitTemplate, UnitState] = {}
-        self.structures = {}
+        self.structures: StructureState | None = None
         self.attacker_units: dict[UnitTemplate, UnitState] = {}
         self.objective_token = None
         self.tile_position = None
@@ -219,6 +234,19 @@ class Area:
     def area_type(self):
         return self.template.area_type
 
+    @property
+    def friendly_faction(self) -> Faction | None:
+        if self.is_contested():
+            return None
+        else:
+            if self.units:
+                faction = next(iter(self.units)).faction
+            else:
+                faction = self.structures.faction
+        return faction
+
+
+
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
         state = self.units.get(unit) or self.attacker_units.get(unit)
 
@@ -226,7 +254,7 @@ class Area:
             state = UnitState()
             if not self.units:
                 self.units[unit] = state
-            elif unit.faction_id == next(iter(self.units)).faction_id:
+            elif unit.faction == next(iter(self.units)).faction:
                 self.units[unit] = state
             else:
                 self.attacker_units[unit] = state
@@ -257,7 +285,7 @@ class Area:
         return bool(self.attacker_units)
 
     def is_friendly(self, player: Player) -> bool:
-        pass
+        ...
 
     def calculate_anchors(self, radius):
         if self.is_uncontrolled():
