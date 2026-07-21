@@ -91,9 +91,9 @@ class StructureTemplate:
 @dataclass
 class StructureState:
     faction: Faction
-    cities: int
-    factories: int
-    bastions: int
+    cities: int = 0
+    factories: int = 0
+    bastions: int = 0
 
 
 class GameState:
@@ -236,16 +236,11 @@ class Area:
 
     @property
     def friendly_faction(self) -> Faction | None:
-        if self.is_contested():
+        if self.is_contested() or self.is_uncontrolled():
             return None
-        else:
-            if self.units:
-                faction = next(iter(self.units)).faction
-            else:
-                faction = self.structures.faction
-        return faction
-
-
+        if self.units:
+            return next(iter(self.units)).faction
+        return self.structures.faction
 
     def add_units(self, unit: UnitTemplate, amount_unrouted: int, amount_routed: int = 0):
         state = self.units.get(unit) or self.attacker_units.get(unit)
@@ -277,15 +272,36 @@ class Area:
 
         if state.unrouted == 0 and state.routed == 0:
             del units_dict[unit]
-
+            
+    def add_structure(self, structure: StructureType, faction: Faction):
+		if self.structures is  None:
+			self.structures = StructureState(faction)
+		match structure:
+			case StructureType.CITY:
+				self.structures.cities += 1
+			case StructureType.FACTORY:
+				self.structures.factories += 1
+			case StructureType.BASTION:
+				self.structures.bastions += 1
+		
+	def remove_structure(self, structure: StructureType):
+		if self.structures is None:
+			return
+		match structure:
+			case StructureType.CITY:
+				self.structures.cities -= min(self.structures.cities, 1)
+			case StructureType.FACTORY:
+				self.structures.factories -= min(self.structures.factories, 1)
+			case StructureType.BASTION:
+				self.structures.bastions -= min(self.structures.bastions, 1)
+		if sum(number for number in vars(self.structures).values() if isinstance(number, int)) == 0:
+			self.structures = None
+		
     def is_uncontrolled(self) -> bool:
-        return len(self.units) == 0 and len(self.structures) == 0
+        return not self.units and self.structures is None
 
     def is_contested(self) -> bool:
         return bool(self.attacker_units)
-
-    def is_friendly(self, player: Player) -> bool:
-        ...
 
     def calculate_anchors(self, radius):
         if self.is_uncontrolled():
@@ -396,6 +412,7 @@ class BoardRenderer:
     TILE_SIZE = 300
     DEFAULT_ANCHOR_RADIUS = TILE_SIZE / 6
     UNIT_OFFSET = 15
+    STRUCTURE_OFFSET = 15
 
     def normalise(self, value):
         return value * self.TILE_SIZE if value else None
@@ -441,7 +458,24 @@ class BoardRenderer:
                     for i in range(routed):
                         draw.circle(current_position, 5, "black")
                         current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-
+	
+	def draw_structures(self, area: Area, draw: ImageDraw.Draw):
+		area_origin_px, area_origin_py = self.normalise(area.local_origin[0]), self.normalise(area.local_origin[1])
+		structure_mappings = (
+		(StructureType.CITY, area.structures.cities, f"assets/city.png"), 
+		(StructureType.FACTORY, area.structures.factories, f"assets/factory.png"), 
+		(StructureType.BASTION, area.structures.bastions, f"assets/bastion.png")
+		)
+		structure_total = sum(count for type, count, img_path in structure_counts)
+		leftmost_offset = (structure_total - 1) * self.STRUCTURE_OFFSET / 2
+		starting_position = area_origin_px - leftmost_offset, area_origin_py 
+		current_position = starting_position
+		for structure_type, count, img in structure_mappings:
+			if count == 0:
+				continue
+			
+			
+	
     def render(self, board: Board, debug=False):
         tiles = board.tiles
 
