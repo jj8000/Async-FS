@@ -27,10 +27,10 @@ class Player:
         self.order_upgrades = []
 
 
-@dataclass
+@dataclass(frozen=True)
 class Faction:
     name: str
-    id: str
+    id: FactionId
     ability: str
     starting_units: dict[UnitTemplate, int]
     total_units: dict[UnitTemplate, int]
@@ -43,6 +43,13 @@ class Faction:
     home_tile: Tile
 
 
+class FactionId(Enum):
+	SPACE_MARINES = "Space Marines"
+	CHAOS = "Chaos Space Marines"
+	ORKS = "Orks"
+	ELDAR = "Eldar"
+	
+	
 class AreaType(Enum):
     VOID = "void"
     WORLD = "world"
@@ -52,9 +59,9 @@ class AreaType(Enum):
 class UnitTemplate:
     name: str
     long_name: str
-    unit_type: str
+    unit_type: UnitType
     command_level: int
-    faction: Faction
+    faction: FactionId
 
     combat_value: int
     health: int
@@ -62,6 +69,11 @@ class UnitTemplate:
 
     materiel_cost: int
     requires_forge: bool
+
+
+class UnitType(Enum):
+	GROUND = "ground unit"
+	SHIP = "ship"
 
 
 @dataclass
