@@ -274,29 +274,29 @@ class Area:
             del units_dict[unit]
             
     def add_structure(self, structure: StructureType, faction: Faction):
-		if self.structures is  None:
-			self.structures = StructureState(faction)
-		match structure:
-			case StructureType.CITY:
-				self.structures.cities += 1
-			case StructureType.FACTORY:
-				self.structures.factories += 1
-			case StructureType.BASTION:
-				self.structures.bastions += 1
-		
-	def remove_structure(self, structure: StructureType):
-		if self.structures is None:
-			return
-		match structure:
-			case StructureType.CITY:
-				self.structures.cities -= min(self.structures.cities, 1)
-			case StructureType.FACTORY:
-				self.structures.factories -= min(self.structures.factories, 1)
-			case StructureType.BASTION:
-				self.structures.bastions -= min(self.structures.bastions, 1)
-		if sum(number for number in vars(self.structures).values() if isinstance(number, int)) == 0:
-			self.structures = None
-		
+        if self.structures is  None:
+            self.structures = StructureState(faction)
+        match structure:
+            case StructureType.CITY:
+                self.structures.cities += 1
+            case StructureType.FACTORY:
+                self.structures.factories += 1
+            case StructureType.BASTION:
+                self.structures.bastions += 1
+
+    def remove_structure(self, structure: StructureType):
+        if self.structures is None:
+            return
+        match structure:
+            case StructureType.CITY:
+                self.structures.cities -= min(self.structures.cities, 1)
+            case StructureType.FACTORY:
+                self.structures.factories -= min(self.structures.factories, 1)
+            case StructureType.BASTION:
+                self.structures.bastions -= min(self.structures.bastions, 1)
+        if sum(number for number in vars(self.structures).values() if isinstance(number, int)) == 0:
+            self.structures = None
+
     def is_uncontrolled(self) -> bool:
         return not self.units and self.structures is None
 
@@ -307,7 +307,7 @@ class Area:
         if self.is_uncontrolled():
             return
 
-        if not self.is_contested():
+        if not self.is_contested() and self.units:
             n = len(self.units) # number of unit anchors
             phi = 360 / n
             anchor_offsets = [rotate_vector((0, -radius), i * phi) for i in range(n)]
@@ -412,10 +412,15 @@ class BoardRenderer:
     TILE_SIZE = 300
     DEFAULT_ANCHOR_RADIUS = TILE_SIZE / 6
     UNIT_OFFSET = 15
-    STRUCTURE_OFFSET = 15
+    STRUCTURE_OFFSET = 8
 
     def normalise(self, value):
         return value * self.TILE_SIZE if value else None
+
+    @staticmethod
+    def paste_centered(canvas: Image.Image, image: Image.Image, centre: tuple[int, int]) -> None:
+        x, y = centre
+        canvas.paste(image, (round(x - image.width / 2), round(y - image.height / 2)), image)
 
     def draw_units(self, area: Area, draw: ImageDraw.Draw):
         anchor_offsets = (
@@ -427,55 +432,55 @@ class BoardRenderer:
                     unrouted = unit_state.unrouted
                     routed = unit_state.routed
                     anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-                    current_position = anchor_position
+                    cursor = anchor_position
                     for i in range(unrouted):
-                        draw.circle(current_position, 5, "white")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                        draw.circle(cursor, 5, "white")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
                     for i in range(routed):
-                        draw.circle(current_position, 5, "black")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                        draw.circle(cursor, 5, "black")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
             elif area.is_contested():
                 for offset, (unit_template, unit_state) in zip(anchor_offsets[0], area.units.items()):
                     unrouted = unit_state.unrouted
                     routed = unit_state.routed
                     anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-                    current_position = anchor_position
+                    cursor = anchor_position
                     for i in range(unrouted):
-                        draw.circle(current_position, 5, "white")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                        draw.circle(cursor, 5, "white")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
                     for i in range(routed):
-                        draw.circle(current_position, 5, "black")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                        draw.circle(cursor, 5, "black")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
 
                 for offset, (unit_template, unit_state) in zip(anchor_offsets[1], area.attacker_units.items()):
                     unrouted = unit_state.unrouted
                     routed = unit_state.routed
                     anchor_position = (area_origin_px + offset[0], area_origin_py + offset[1])
-                    current_position = anchor_position
+                    cursor = anchor_position
                     for i in range(unrouted):
-                        draw.circle(current_position, 5, "white")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
+                        draw.circle(cursor, 5, "white")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
                     for i in range(routed):
-                        draw.circle(current_position, 5, "black")
-                        current_position = (current_position[0] + self.UNIT_OFFSET, current_position[1])
-	
-	def draw_structures(self, area: Area, draw: ImageDraw.Draw):
-		area_origin_px, area_origin_py = self.normalise(area.local_origin[0]), self.normalise(area.local_origin[1])
-		structure_mappings = (
-		(StructureType.CITY, area.structures.cities, f"assets/city.png"), 
-		(StructureType.FACTORY, area.structures.factories, f"assets/factory.png"), 
-		(StructureType.BASTION, area.structures.bastions, f"assets/bastion.png")
-		)
-		structure_total = sum(count for type, count, img_path in structure_counts)
-		leftmost_offset = (structure_total - 1) * self.STRUCTURE_OFFSET / 2
-		starting_position = area_origin_px - leftmost_offset, area_origin_py 
-		current_position = starting_position
-		for structure_type, count, img in structure_mappings:
-			if count == 0:
-				continue
-			
-			
-	
+                        draw.circle(cursor, 5, "black")
+                        cursor = (cursor[0] + self.UNIT_OFFSET, cursor[1])
+
+    def draw_structures(self, area: Area, tile_img):
+        area_origin_px, area_origin_py = self.normalise(area.local_origin[0]), self.normalise(area.local_origin[1])
+        structure_mappings = (
+        (StructureType.CITY, area.structures.cities, f"assets/city.png"),
+        (StructureType.FACTORY, area.structures.factories, f"assets/factory.png"),
+        (StructureType.BASTION, area.structures.bastions, f"assets/bastion.png")
+        )
+        structure_total = sum(count for structure_type, count, img_path in structure_mappings)
+        leftmost_offset = (structure_total - 1) * self.STRUCTURE_OFFSET / 2
+        starting_position = area_origin_px - leftmost_offset, area_origin_py
+        cursor = starting_position
+        for structure_type, count, img_path in structure_mappings:
+            img = Image.open(img_path).convert("RGBA")
+            for _ in range(count):
+                self.paste_centered(tile_img, img, cursor)
+                cursor = (cursor[0] + self.STRUCTURE_OFFSET, cursor[1])
+
     def render(self, board: Board, debug=False):
         tiles = board.tiles
 
@@ -511,6 +516,9 @@ class BoardRenderer:
                     draw.circle((area_origin_px, area_origin_py), 5, "black")
                     draw.circle((area_origin_px, area_origin_py), self.DEFAULT_ANCHOR_RADIUS)
                     self.draw_units(area, draw)
+                    if area.structures is not None:
+                        self.draw_structures(area, img)
+
 
                     draw.text((area_origin_px - 15, area_origin_py - 15), text=str(area.tile_position), fill="black")
 

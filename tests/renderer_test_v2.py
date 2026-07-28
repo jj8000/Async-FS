@@ -24,11 +24,12 @@ from gamestate import (
     AreaType,
     Board,
     BoardRenderer,
+    Faction,
+    StructureType,
     Tile,
     TileTemplate,
     UnitTemplate,
 )
-
 
 OUTPUT_DIR = Path("tests/test_outputs")
 OUTPUT_DIR.mkdir(exist_ok=True)
@@ -159,6 +160,21 @@ tiles = [
 board = Board(player_count=2)
 renderer = BoardRenderer()
 
+space_marine_faction = Faction(
+    name="Space Marines",
+    id="spacemarines",
+    ability="",
+    starting_units={},
+    total_units={},
+    starting_assets={},
+    starting_materiel=0,
+    starting_combat_cards=[],
+    combat_upgrades=[],
+    order_upgrades=[],
+    event_cards=[],
+    home_tile=tiles[0],
+)
+
 placements = (
     ((-1, -1), tiles[0]),
     ((0, -1), tiles[1]),
@@ -285,6 +301,100 @@ render_step(renderer, board, "12_attackers_cleared")
 combat_area.remove_units(titan, 99)
 check(titan not in combat_area.units, "Removing missing stack is harmless")
 
+
+# ---------------------------------------------------------------------------
+# Structures
+# ---------------------------------------------------------------------------
+
+structure_area = get_area(board, (0, 1), 3)
+
+structure_area.add_structure(
+    StructureType.CITY,
+    space_marine_faction,
+)
+
+check(
+    structure_area.structures is not None,
+    "Structure state created",
+)
+check(
+    structure_area.structures.cities == 1,
+    "One city added",
+)
+check(
+    structure_area.structures.factories == 0,
+    "No factories present",
+)
+check(
+    structure_area.structures.bastions == 0,
+    "No bastions present",
+)
+
+render_step(renderer, board, "13_one_city")
+
+
+structure_area.add_structure(
+    StructureType.CITY,
+    space_marine_faction,
+)
+structure_area.add_structure(
+    StructureType.FACTORY,
+    space_marine_faction,
+)
+
+check(
+    structure_area.structures.cities == 2,
+    "Second city added",
+)
+check(
+    structure_area.structures.factories == 1,
+    "Factory added",
+)
+
+render_step(renderer, board, "14_two_cities_one_factory")
+
+
+structure_area.add_structure(
+    StructureType.BASTION,
+    space_marine_faction,
+)
+
+check(
+    structure_area.structures.bastions == 1,
+    "Bastion added",
+)
+
+render_step(renderer, board, "15_all_structure_types")
+
+
+structure_area.remove_structure(StructureType.CITY)
+
+check(
+    structure_area.structures.cities == 1,
+    "One city removed",
+)
+
+render_step(renderer, board, "16_one_city_removed")
+
+
+structure_area.remove_structure(StructureType.CITY)
+structure_area.remove_structure(StructureType.FACTORY)
+structure_area.remove_structure(StructureType.BASTION)
+
+check(
+    structure_area.structures is None,
+    "Structure state removed when empty",
+)
+
+render_step(renderer, board, "17_structures_cleared")
+
+
+structure_area.remove_structure(StructureType.CITY)
+
+check(
+    structure_area.structures is None,
+    "Removing a structure from an empty area is harmless",
+)
 
 print()
 print("All assertions passed.")
