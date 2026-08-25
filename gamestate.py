@@ -69,6 +69,8 @@ class UnitTemplate:
 
     materiel_cost: int
     requires_forge: bool
+    
+    image_path: str
 
 
 class UnitType(Enum):
