@@ -16,3 +16,11 @@ class AssetManager:
             self._image_cache[relative_path] = Image.open(full_path).convert("RGBA")
 
         return self._image_cache[relative_path]
+
+
+assets = AssetManager("assets")
+
+img = assets.image(SCOUT.image_path)
+
+print(img)
+print(img.size)

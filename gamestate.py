@@ -17,7 +17,7 @@ class Player:
         self.faction = faction
         self.index = index
 
-        self.units = dict(self.faction.starting_units)
+        self.available_units = dict(self.faction.starting_units)
         self.assets = dict(self.faction.starting_assets)
         self.materiel = self.faction.starting_materiel
 
@@ -40,7 +40,7 @@ class Faction:
     combat_upgrades: list[CombatCard]
     order_upgrades: list[OrderUpgrade]
     event_cards: list[EventCard]
-    home_tile: Tile
+    home_tile: TileTemplate
 
 
 class FactionId(Enum):
@@ -119,6 +119,12 @@ class GameState:
 
     def next_player(self):
         self.active_player_index = (self.active_player_index + 1) % len(self.players)
+        
+	def finish_setup(self):
+		for player in self.players:
+			for unit, total in player.faction.total_units.items():
+				starting = player.faction.starting_units.get(unit, 0)
+				player.available_units[unit] = total - starting
 
 
 @dataclass
@@ -135,7 +141,7 @@ class SetupConfig:
         self.players.append(PlayerSetup(player_name, faction))
 
 
-def setup_game(config: SetupConfig) -> GameState:
+def start_setup(config: SetupConfig) -> GameState:
     player_setups = config.players.copy()
     random.shuffle(player_setups)
     players = []
