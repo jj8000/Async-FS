@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import random
-from enum import Enum
+from enum import Enum, auto
 from PIL import Image, ImageDraw
 from collections import deque
 from math import pi, sin, cos
@@ -23,8 +23,11 @@ class Player:
 
         self.combat_deck = CombatDeck(self.faction.starting_combat_cards)
         self.event_deck = EventDeck(self.faction.event_cards)
+        self.available_combat_upgrades = list(self.faction.combat_upgrades)
 
-        self.order_upgrades = []
+        self.order_upgrades: list[OrderUpgrade] = []
+
+        self.schemes: list[EventCard] = []
 
 
 @dataclass(frozen=True)
@@ -32,24 +35,26 @@ class Faction:
     name: str
     id: FactionId
     ability: str
+
     starting_units: dict[UnitTemplate, int]
     total_units: dict[UnitTemplate, int]
     starting_assets: dict[Asset, int]
     starting_materiel: int
-    starting_combat_cards: list[CombatCard]
-    combat_upgrades: list[CombatCard]
-    order_upgrades: list[OrderUpgrade]
-    event_cards: list[EventCard]
+
+    starting_combat_cards: tuple[CombatCard]
+    combat_upgrades: tuple[CombatCard]
+    order_upgrades: tuple[OrderUpgrade]
+    event_cards: tuple[EventCard]
     home_tile: TileTemplate
 
 
 class FactionId(Enum):
-	SPACE_MARINES = "Space Marines"
-	CHAOS = "Chaos Space Marines"
-	ORKS = "Orks"
-	ELDAR = "Eldar"
-	
-	
+    SPACE_MARINES = "Space Marines"
+    CHAOS = "Chaos Space Marines"
+    ORKS = "Orks"
+    ELDAR = "Eldar"
+
+
 class AreaType(Enum):
     VOID = "void"
     WORLD = "world"
@@ -74,8 +79,8 @@ class UnitTemplate:
 
 
 class UnitType(Enum):
-	GROUND = "ground unit"
-	SHIP = "ship"
+    GROUND = "ground unit"
+    SHIP = "ship"
 
 
 @dataclass
@@ -104,7 +109,7 @@ class StructureTemplate:
 
 @dataclass
 class StructureState:
-    faction: Faction
+    faction: FactionId
     cities: int = 0
     factories: int = 0
     bastions: int = 0
@@ -120,11 +125,11 @@ class GameState:
     def next_player(self):
         self.active_player_index = (self.active_player_index + 1) % len(self.players)
         
-	def finish_setup(self):
-		for player in self.players:
-			for unit, total in player.faction.total_units.items():
-				starting = player.faction.starting_units.get(unit, 0)
-				player.available_units[unit] = total - starting
+    def finish_setup(self):
+        for player in self.players:
+            for unit, total in player.faction.total_units.items():
+                starting = player.faction.starting_units.get(unit, 0)
+                player.available_units[unit] = total - starting
 
 
 @dataclass
@@ -182,7 +187,7 @@ class EventDeck:
 
 class CombatDeck:
     def __init__(self, combat_cards):
-        self.cards = list(combat_cards)
+        self.cards = [card for card in combat_cards for _ in range(2)]
         self.shuffle()
 
     def __iter__(self):
@@ -198,14 +203,22 @@ class CombatDeck:
         drawn = [self.cards.pop() for _ in range(number_of_cards)]
         return drawn
 
-    def upgrade(self, removed_cards, purchased_cards):
-        ...
+    def upgrade(self, removed_card: CombatCard, purchased_card: CombatCard):
+        self.cards = [card for card in self.cards if card != removed_card]
+        self.cards.extend((purchased_card, purchased_card))
+        self.shuffle()
 
 
 @dataclass
 class EventCard:
     name: str
     image_path: str
+    type: EventType
+
+
+class EventType(Enum):
+    TACTIC = auto()
+    SCHEME = auto()
 
 
 @dataclass
@@ -255,7 +268,7 @@ class Area:
         return self.template.area_type
 
     @property
-    def friendly_faction(self) -> Faction | None:
+    def friendly_faction(self) -> FactionId | None:
         if self.is_contested() or self.is_uncontrolled():
             return None
         if self.units:
@@ -519,6 +532,7 @@ class BoardRenderer:
 
         for (x, y), tile in tiles.items():
             img = Image.open(tile.template.image_path)
+            img = img.resize((self.TILE_SIZE, self.TILE_SIZE))
 
             if tile.rotation:
                 img = img.rotate(tile.rotation)

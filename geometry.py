@@ -8,18 +8,19 @@ def rotate_vector(vector: tuple[float, float], angle: float) -> tuple[float, flo
 
     # Assumes screen coordinates - x increasing right, y increasing downwards, positive angle CCW
 
+if __name__ == "__main__":
 
-assert rotate_vector((1, 1), 0) == (1, 1)
-print(rotate_vector((1, 0), 90))
-print(rotate_vector((0, -1), 90))
-print(rotate_vector((0, -1), 180))
-print(rotate_vector((0, -1), 270))
-assert isclose(rotate_vector((1, 0), 90)[0], (0, -1)[0], abs_tol=1e10)
-print(rotate_vector((1, 0), 90)[0])
-print((0, -1)[0])
-print()
+    assert rotate_vector((1, 1), 0) == (1, 1)
+    print(rotate_vector((1, 0), 90))
+    print(rotate_vector((0, -1), 90))
+    print(rotate_vector((0, -1), 180))
+    print(rotate_vector((0, -1), 270))
+    assert isclose(rotate_vector((1, 0), 90)[0], (0, -1)[0], abs_tol=1e10)
+    print(rotate_vector((1, 0), 90)[0])
+    print((0, -1)[0])
+    print()
 
-for n in range(1, 5):
-    angle = 360 / n
-    anchor_offsets = [rotate_vector((0, -50), i * angle) for i in range(n)]
-    print(f"n={n}   {anchor_offsets}")
+    for n in range(1, 5):
+        angle = 360 / n
+        anchor_offsets = [rotate_vector((0, -50), i * angle) for i in range(n)]
+        print(f"n={n}   {anchor_offsets}")
